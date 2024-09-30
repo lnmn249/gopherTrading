@@ -1,0 +1,72 @@
+import pandas as pd
+import numpy as np
+
+# Function to calculate EMA
+def ema(series, period):
+    return series.ewm(span=period, adjust=False).mean()
+
+# Sample data: Replace this with your actual OHLC data
+data = h
+
+# Ensure that all columns are numeric
+data['open'] = pd.to_numeric(data['open'], errors='coerce')
+data['high'] = pd.to_numeric(data['high'], errors='coerce')
+data['low'] = pd.to_numeric(data['low'], errors='coerce')
+data['close'] = pd.to_numeric(data['close'], errors='coerce')
+
+# Configurable parameters
+ema_length = 21
+tolerance = 0.00001
+
+# Calculate the EMA
+data['ema'] = ema(data['close'], ema_length)
+
+# Define candles
+data['prev_open'] = data['open'].shift(1)
+data['prev_close'] = data['close'].shift(1)
+data['prev_high'] = data['high'].shift(1)
+data['prev_low'] = data['low'].shift(1)
+
+# Calculate body and wick sizes
+data['prev_body'] = np.abs(data['prev_close'] - data['prev_open'])
+data['prev_upper_wick'] = data['prev_high'] - np.maximum(data['prev_close'], data['prev_open'])
+data['prev_lower_wick'] = np.minimum(data['prev_close'], data['prev_open']) - data['prev_low']
+data['prev_total_wicks'] = data['prev_upper_wick'] + data['prev_lower_wick']
+
+data['current_body'] = np.abs(data['close'] - data['open'])
+data['current_upper_wick'] = data['high'] - np.maximum(data['close'], data['open'])
+data['current_lower_wick'] = np.minimum(data['close'], data['open']) - data['low']
+data['current_total_wicks'] = data['current_upper_wick'] + data['current_lower_wick']
+
+# Condition 1: Previous candle body larger than the current candle body
+data['condition_1'] = data['prev_body'] > data['current_body']
+
+# Condition 2: Green/Red candle conditions
+data['green_candle_condition'] = (data['close'] <= data['prev_high'] + tolerance) & (data['close'] > data['prev_close']) & (data['close'] > data['open']) & (data['prev_close'] > data['prev_open'])
+data['red_candle_condition'] = (data['close'] >= data['prev_low'] - tolerance) & (data['close'] < data['prev_close']) & (data['close'] < data['open']) & (data['prev_close'] < data['prev_open'])
+
+# Condition 3: Previous candle body > sum of its wicks
+data['condition_3'] = data['prev_body'] > data['prev_total_wicks']
+
+# Condition 4: Current candle wicks > current body
+data['condition_4'] = data['current_total_wicks'] > data['current_body']
+
+# Condition 5: Current and previous candle are the same color
+data['same_color_condition'] = ((data['close'] > data['open']) & (data['prev_close'] > data['prev_open'])) | ((data['close'] < data['open']) & (data['prev_close'] < data['prev_open']))
+
+# Condition 6: Current close must be above EMA for green candles and below EMA for red candles
+data['green_above_ema'] = data['close'] > data['ema']
+data['red_below_ema'] = data['close'] < data['ema']
+
+# Condition 7: New high for green candles, new low for red candles
+data['green_new_high'] = data['high'] > data['prev_high']
+data['red_new_low'] = data['low'] < data['prev_low']
+
+# Final condition combining all the above
+data['final_condition'] = data['condition_1'] & (
+    (data['green_candle_condition'] & data['green_above_ema'] & data['green_new_high']) |
+    (data['red_candle_condition'] & data['red_below_ema'] & data['red_new_low'])
+) & data['condition_3'] & data['condition_4'] & data['same_color_condition']
+
+# Print rows where the final condition is true
+print(data[data['final_condition']])
